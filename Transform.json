@@ -1,0 +1,75 @@
+{
+    "name": "TransformCSV",
+    "properties": {
+        "type": "MappingDataFlow",
+        "typeProperties": {
+            "sources": [
+                {
+                    "dataset": {
+                        "referenceName": "dataflow_source",
+                        "type": "DatasetReference"
+                    },
+                    "name": "source1"
+                }
+            ],
+            "sinks": [
+                {
+                    "dataset": {
+                        "referenceName": "dataflow_sink",
+                        "type": "DatasetReference"
+                    },
+                    "name": "sink"
+                }
+            ],
+            "transformations": [
+                {
+                    "name": "selectcols"
+                },
+                {
+                    "name": "filterrows"
+                },
+                {
+                    "name": "split"
+                }
+            ],
+            "scriptLines": [
+                "source(output(",
+                "          transaction_id as short,",
+                "          transactional_date as timestamp,",
+                "          product_id as string,",
+                "          customer_id as short,",
+                "          payment as string,",
+                "          credit_card as long,",
+                "          loyalty_card as boolean,",
+                "          cost as double,",
+                "          quantity as short,",
+                "          price as double",
+                "     ),",
+                "     allowSchemaDrift: true,",
+                "     validateSchema: false,",
+                "     ignoreNoFilesFound: false) ~> source1",
+                "source1 select(mapColumn(",
+                "          transaction_id,",
+                "          transactional_date,",
+                "          product_id,",
+                "          customer_id,",
+                "          payment,",
+                "          price",
+                "     ),",
+                "     skipDuplicateMapInputs: true,",
+                "     skipDuplicateMapOutputs: true) ~> selectcols",
+                "selectcols filter(customer_id !=12) ~> filterrows",
+                "filterrows split(payment == 'visa',",
+                "     payment =='mastercard',",
+                "     disjoint: false) ~> split@(payment, mastercard, amex)",
+                "split@payment sink(allowSchemaDrift: true,",
+                "     validateSchema: false,",
+                "     umask: 0022,",
+                "     preCommands: [],",
+                "     postCommands: [],",
+                "     skipDuplicateMapInputs: true,",
+                "     skipDuplicateMapOutputs: true) ~> sink"
+            ]
+        }
+    }
+}

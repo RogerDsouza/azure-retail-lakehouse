@@ -11,109 +11,85 @@ This repo demonstrates a mini **lakehouse** on Azure using one retail CSV datase
 ## Architecture (Medallion)
 
 
-Storage account: `retaildatagit`  
-Containers used: `bronze` (raw + gold outputs for this demo), optional `silver`  
-Bronze file: `/bronze/retail_sales_dataset.csv`
+# Azure Retail Lakehouse Project
+
+This project demonstrates a mini **Azure Lakehouse** built on ADLS Gen2, Synapse Serverless SQL, and Azure Data Factory.  
+Dataset: `retail_sales_dataset.csv` (retail transactions).
 
 ---
 
-## WIN 1 — Bronze (Query Raw with OPENROWSET)
+## WIN 1 – Bronze (Query Raw Data with Synapse)
 
-- I connected Synapse Serverless to ADLS Gen2 via **Managed Identity**.
-- I queried the CSV directly without loading to a DB table.
+- Connected Synapse Serverless to ADLS Gen2 using **Managed Identity**.  
+- Queried the raw CSV file directly with **OPENROWSET**.  
 
-Script: [`sql/win1_openrowset.sql`](sql/win1_openrowset.sql)
+📄 Script: [`Azure Synapse Script 1.sql`](Azure%20Synapse%20Script%201.sql):contentReference[oaicite:5]{index=5}  
 
-**Screenshot (sample result):**  
-![WIN1](images/win1_openrowset_result.png)
-
-**What this shows:**  
-- You can run **ad-hoc SQL** on files stored in Data Lake.
-- Great for quick validation and exploration.
+**What this shows:** You can explore data directly from Data Lake without loading it into a table.
 
 ---
 
-## WIN 2 — Gold (CETAS to Parquet External Tables)
+## WIN 2 – Gold (Curated Tables with CETAS)
 
-I created four curated tables (as Parquet files) using **CETAS**:
+- Created four curated **Parquet external tables** using **CETAS**:  
+  - `dim_date`, `dim_customer`, `dim_product`, `fact_sales`  
+- Represent a simple **star schema** for reporting and BI.
 
-- `dbo.dim_date` – date attributes (year, month, weekday, weekend flag)  
-- `dbo.dim_customer` – customer id, gender, age, age_band  
-- `dbo.dim_product` – product_category, price_per_unit  
-- `dbo.fact_sales` – transaction_id, date_id, customer_id, product info, quantity, total_amount  
+📄 Script: [`Azure Synapse Script 2.sql`](Azure%20Synapse%20Script%202.sql):contentReference[oaicite:6]{index=6}
 
-Script: [`sql/win2_gold_simple_star.sql`](sql/win2_gold_simple_star.sql)
-
-**Screenshot (TOP 5 from each):**  
-![WIN2](images/win2_tables_selects.png)
-
-**Where files land:**  
-- `/gold/simple/dim_date/`  
-- `/gold/simple/dim_customer/`  
-- `/gold/simple/dim_product/`  
-- `/gold/simple/fact_sales/`  
-
-**What this shows:**  
-- How to convert raw CSV into **columnar Parquet**.  
-- How to surface curated data as **external tables** for BI tools.
+**What this shows:** How to transform CSV data into structured Parquet, ready for analytics.
 
 ---
 
-## WIN 3 — ADF Orchestration (Showcase Pipeline)
+## WIN 3 – Orchestration with Azure Data Factory (ADF)
 
-I built a single pipeline to demonstrate common ADF features. Order of activities:
+Built an ADF pipeline to showcase common orchestration and transformation activities:
 
-1. **Get Metadata** – reads file info for `retail_sales_dataset.csv`  
-2. **If Condition** – branches logic (e.g., weekend vs weekday)  
-3. **ForEach** – loops through product categories (e.g., Clothing, Electronics, Groceries) and runs sub-tasks  
-4. **Mapping Data Flow** – transformations used:
-   - **Select** (choose useful columns)
-   - **Filter** (remove rows with non-positive Total Amount)
-   - **Conditional Split** (route rows by a rule)
-   - **Sink** (write cleaned data to `/silver/retail_sales_clean/` as Parquet)
-5. **Set Variable** – stores a final status message
-6. **Storage Events Trigger** – fires the pipeline automatically when a new file lands in **bronze**  
-   *(This repo is a showcase; the trigger/pipeline don’t need to be run.)*
+1. **Get Metadata** – list files in the Bronze container:contentReference[oaicite:7]{index=7}  
+2. **If Condition** – checks whether file names match a rule (example: starts with `Fact`):contentReference[oaicite:8]{index=8}  
+3. **ForEach** – loops through files returned by Get Metadata:contentReference[oaicite:9]{index=9}  
+4. **Mapping Data Flow** – performs transformations:  
+   - **Select** → choose needed columns  
+   - **Filter** → remove rows (example: customer_id ≠ 12):contentReference[oaicite:10]{index=10}  
+   - **Conditional Split** → branch rows by payment type (Visa, Mastercard, Amex):contentReference[oaicite:11]{index=11}  
+   - **Sink** → write cleaned output back to Data Lake  
+5. **Set Variable** – stores output info for debugging/logging:contentReference[oaicite:12]{index=12}  
+6. **Storage Event Trigger** – automatically fires pipeline when a new file lands in Bronze  
 
-**Screenshots:**  
-- Pipeline canvas – ![Pipeline](images/win3_pipeline_canvas.png)  
-- If Condition – ![If](images/win3_ifcondition.png)  
-- ForEach – ![ForEach](images/win3_foreach.png)  
-- Data Flow graph – ![DF](images/win3_dataflow_graph.png)  
-- Storage Event Trigger – ![Trigger](images/win3_trigger_storage_events.png)
+📄 Pipeline JSON: [`pipelines.json`](pipelines.json)  
+📄 Data Flow JSON: [`Transform.json`](Transform.json)  
+📄 Variable Pipeline JSON: [`set-variable.json`](set-variable.json)
 
-**ADF JSON for reference (browseable):**  
-- Pipeline JSON – [`adf/pipelines/pl_retail_showcase.json`](adf/pipelines/pl_retail_showcase.json)  
-- Data Flow JSON – [`adf/dataflows/df_retail_clean.json`](adf/dataflows/df_retail_clean.json)  
-- Trigger JSON – [`adf/triggers/storage_event_trigger.json`](adf/triggers/storage_event_trigger.json)
+🖼️ Screenshots:  
+- Full pipeline: ![Pipeline](pipeline.png)  
+- Set Variable activity: ![SetVariable](setvariable.png)  
+- Data Flow transformations: ![Transform](transform.png)
 
-**What this shows:**  
-- Control flow (Get Metadata, If, ForEach, Set Variable)  
-- Data flow (transformations and sink)  
-- Event-driven orchestration (Storage Events Trigger)
+**What this shows:** Control flow (Get Metadata, If, ForEach, Set Variable), data flow transformations, and event-driven orchestration in ADF.
 
 ---
 
-## How to Reproduce (high level)
+## Outputs
 
-1. **ADLS Gen2**: create storage, container `bronze`, upload `retail_sales_dataset.csv`.  
-2. **Access**: grant the Synapse workspace **Managed Identity** the role *Storage Blob Data Contributor* on the storage account.  
-3. **Synapse Serverless**:
-   - Run [`win1_openrowset.sql`](sql/win1_openrowset.sql) to validate raw file.
-   - Run [`win2_gold_simple_star.sql`](sql/win2_gold_simple_star.sql) to create Gold Parquet tables.  
-     *(If CETAS errors “folder exists,” delete the target `/gold/simple/...` folder(s) and re-run.)*
-4. **ADF (optional showcase)**: import/open the JSON to view the pipeline and data flow design.
+- **Bronze**: raw CSV in ADLS Gen2.  
+- **Gold**: curated Parquet star schema tables in Synapse.  
+- **ADF Pipeline**: automated data transformations with orchestration and triggers.
 
 ---
 
-## Notes / Decisions
+## High-Level Steps to Reproduce
 
-- I used **Parquet** for Gold because it’s columnar, compressed, and query-efficient.  
-- I kept **WIN 2** simple by using natural keys; easy to extend to surrogate keys later.  
-- **WIN 3** is designed to **show concepts** (branching, looping, transforms, triggers) without requiring execution.
+1. Create ADLS Gen2 storage, container `bronze`, and upload `retail_sales_dataset.csv`.  
+2. Grant Synapse workspace **Storage Blob Data Contributor** role.  
+3. Run `Azure Synapse Script 1.sql` to query Bronze.  
+4. Run `Azure Synapse Script 2.sql` to generate Gold Parquet tables.  
+5. Import ADF JSONs to view the pipeline and data flow design.  
 
 ---
 
-## Contact
+## Notes
 
-Built by ⟨Your Name⟩. Feedback welcome!
+- Scripts use **OPENROWSET** and **CETAS** with Managed Identity for security.  
+- ADF pipeline demonstrates **branching, looping, transformations, and triggers**.  
+- This repo is for learning/demo; pipelines don’t need to be executed.
+
